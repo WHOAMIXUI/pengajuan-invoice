@@ -93,7 +93,7 @@
             </button>
             <button onclick="switchTab('new-requisition')" id="tab-btn-new-requisition" class="tab-btn inline-flex items-center space-x-2 px-4 py-2.5 font-medium text-sm rounded-t-lg text-slate-600 hover:text-brand-600 hover:bg-slate-100">
                 <i class="fa-solid fa-plus-circle"></i>
-                <span>Buat Pengajuan Baru</span>
+                <span id="tab-label-form">Buat Pengajuan Baru</span>
             </button>
             <button onclick="switchTab('vendors')" id="tab-btn-vendors" class="tab-btn inline-flex items-center space-x-2 px-4 py-2.5 font-medium text-sm rounded-t-lg text-slate-600 hover:text-brand-600 hover:bg-slate-100">
                 <i class="fa-solid fa-building-user"></i>
@@ -180,7 +180,7 @@
                 <!-- Quick Actions Panel -->
                 <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
                     <h2 class="font-bold text-slate-800 text-base mb-2">Aksi Cepat</h2>
-                    <button onclick="switchTab('new-requisition')" class="w-full flex items-center justify-between p-3 rounded-lg bg-brand-50 hover:bg-brand-100 border border-brand-200 text-brand-700 transition">
+                    <button onclick="resetRequisitionForm(); switchTab('new-requisition');" class="w-full flex items-center justify-between p-3 rounded-lg bg-brand-50 hover:bg-brand-100 border border-brand-200 text-brand-700 transition">
                         <div class="flex items-center space-x-3">
                             <i class="fa-solid fa-plus-circle text-lg"></i>
                             <span class="text-sm font-semibold">Buat Pengajuan Baru</span>
@@ -251,16 +251,19 @@
             </div>
         </section>
 
-        <!-- ================= TAB 3: BUAT PENGAJUAN BARU ================= -->
+        <!-- ================= TAB 3: BUAT / EDIT PENGAJUAN ================= -->
         <section id="tab-new-requisition" class="tab-content hidden">
             <form id="requisition-form" onsubmit="handleSaveRequisition(event)" class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
+                <!-- Hidden Input for Editing Existing Requisition -->
+                <input type="hidden" id="req-id">
+
                 <div class="border-b border-slate-200 pb-4 flex items-center justify-between">
                     <div>
-                        <h2 class="text-lg font-bold text-slate-800">Form Pengajuan Pembayaran</h2>
-                        <p class="text-xs text-slate-500">Lengkapi formulir di bawah ini untuk mengajukan pembayaran vendor/supplier</p>
+                        <h2 id="req-form-title" class="text-lg font-bold text-slate-800">Form Pengajuan Pembayaran</h2>
+                        <p class="text-xs text-slate-500">Lengkapi atau modifikasi formulir di bawah ini untuk mengelola pengajuan pembayaran</p>
                     </div>
                     <div class="text-right">
-                        <span class="text-xs text-slate-400 block">Nomor Pengajuan Otomatis:</span>
+                        <span class="text-xs text-slate-400 block">Nomor Pengajuan:</span>
                         <span id="auto-req-no" class="font-mono font-bold text-brand-700 text-base">REQ/YYYYMMDD/XXXX</span>
                     </div>
                 </div>
@@ -373,8 +376,8 @@
                         Reset Form
                     </button>
                     <button type="submit" id="btn-save-req" class="px-6 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold shadow-md transition flex items-center space-x-2">
-                        <i class="fa-solid fa-paper-plane"></i>
-                        <span>Kirim Pengajuan</span>
+                        <i id="btn-save-req-icon" class="fa-solid fa-paper-plane"></i>
+                        <span id="btn-save-req-text">Kirim Pengajuan</span>
                     </button>
                 </div>
             </form>
@@ -643,7 +646,9 @@
                 requisitionsData = snapshot.val() || {};
                 renderDashboard();
                 renderRequisitions();
-                generateNextReqNo();
+                if (!document.getElementById('req-id').value) {
+                    generateNextReqNo();
+                }
                 populateImportReqDropdown();
             }, (error) => {
                 showToast("Gagal memuat data pengajuan: " + error.message, "error");
@@ -669,6 +674,17 @@
         // Helper: Format Rupiah
         function formatRupiah(num) {
             return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num || 0);
+        }
+
+        // Helper: Escape HTML
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
         }
 
         // Helper: Toast Notifications
@@ -737,15 +753,15 @@
                 const v = vendorsData[k];
                 return `
                     <tr class="hover:bg-slate-50 transition">
-                        <td class="p-3 font-semibold text-slate-800">${v.name}</td>
+                        <td class="p-3 font-semibold text-slate-800">${escapeHtml(v.name)}</td>
                         <td class="p-3">
-                            <div class="font-medium text-slate-700">${v.bank} - ${v.accountNo}</div>
-                            <div class="text-slate-400 text-[11px]">a.n. ${v.accountHolder}</div>
+                            <div class="font-medium text-slate-700">${escapeHtml(v.bank)} - ${escapeHtml(v.accountNo)}</div>
+                            <div class="text-slate-400 text-[11px]">a.n. ${escapeHtml(v.accountHolder)}</div>
                         </td>
-                        <td class="p-3 text-slate-600">${v.contact || '-'}</td>
+                        <td class="p-3 text-slate-600">${escapeHtml(v.contact || '-')}</td>
                         <td class="p-3 text-center space-x-2">
-                            <button onclick="editVendor('${v.id}')" class="text-brand-600 hover:text-brand-800 p-1"><i class="fa-solid fa-pen-to-square"></i></button>
-                            <button onclick="deleteVendor('${v.id}')" class="text-red-500 hover:text-red-700 p-1"><i class="fa-solid fa-trash"></i></button>
+                            <button onclick="editVendor('${v.id}')" title="Edit Vendor" class="text-brand-600 hover:text-brand-800 p-1"><i class="fa-solid fa-pen-to-square"></i></button>
+                            <button onclick="deleteVendor('${v.id}')" title="Hapus Vendor" class="text-red-500 hover:text-red-700 p-1"><i class="fa-solid fa-trash"></i></button>
                         </td>
                     </tr>
                 `;
@@ -798,28 +814,43 @@
             }
         }
 
-        function addItemRow() {
+        // Add Item Row to Form (Supports populating existing item data when Editing)
+        function addItemRow(itemData = null) {
             itemCounter++;
             const tbody = document.getElementById('items-table-body');
             const row = document.createElement('tr');
             row.id = `item-row-${itemCounter}`;
+
+            const desc = itemData ? (itemData.description || '') : '';
+            const qty = itemData ? (itemData.qty || 1) : 1;
+            const price = itemData ? (itemData.price || 0) : 0;
+            const attachmentDataUrl = itemData ? (itemData.attachmentDataUrl || '') : '';
+            const attachmentType = itemData ? (itemData.attachmentType || '') : '';
+            const attachmentName = itemData ? (itemData.attachmentName || '') : '';
+
             row.innerHTML = `
                 <td class="p-2 text-center text-slate-400 row-number"></td>
                 <td class="p-2">
-                    <input type="text" required placeholder="Deskripsi barang / jasa" class="w-full px-2.5 py-1.5 border rounded text-xs focus:ring-1 focus:ring-brand-500 item-desc">
+                    <input type="text" required placeholder="Deskripsi barang / jasa" value="${escapeHtml(desc)}" class="w-full px-2.5 py-1.5 border rounded text-xs focus:ring-1 focus:ring-brand-500 item-desc">
                 </td>
                 <td class="p-2">
-                    <input type="number" min="1" value="1" oninput="calculateFormTotals()" required class="w-full px-2 py-1.5 border rounded text-xs text-center focus:ring-1 focus:ring-brand-500 item-qty">
+                    <input type="number" min="1" value="${qty}" oninput="calculateFormTotals()" required class="w-full px-2 py-1.5 border rounded text-xs text-center focus:ring-1 focus:ring-brand-500 item-qty">
                 </td>
                 <td class="p-2">
-                    <input type="number" min="0" value="0" oninput="calculateFormTotals()" required class="w-full px-2 py-1.5 border rounded text-xs text-right focus:ring-1 focus:ring-brand-500 item-price">
+                    <input type="number" min="0" value="${price}" oninput="calculateFormTotals()" required class="w-full px-2 py-1.5 border rounded text-xs text-right focus:ring-1 focus:ring-brand-500 item-price">
                 </td>
                 <td class="p-2 text-right font-semibold text-slate-700 item-subtotal-text">
                     Rp 0
                 </td>
                 <td class="p-2">
-                    <input type="file" accept="image/*,application/pdf" onchange="handleItemFileChange(this)" class="w-full text-[11px] text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100">
-                    <div class="file-preview text-[10px] text-emerald-600 mt-1 hidden"><i class="fa-solid fa-paperclip mr-1"></i>Lampiran Siap</div>
+                    <input type="file" accept="image/*,application/pdf" onchange="handleItemFileChange(this)" 
+                        data-attachment-data-url="${attachmentDataUrl}"
+                        data-attachment-type="${attachmentType}"
+                        data-attachment-name="${escapeHtml(attachmentName)}"
+                        class="w-full text-[11px] text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100">
+                    <div class="file-preview text-[10px] text-emerald-600 mt-1 ${attachmentDataUrl ? '' : 'hidden'}">
+                        <i class="fa-solid fa-paperclip mr-1"></i><span>${attachmentName ? escapeHtml(attachmentName) : 'Lampiran Ada'}</span>
+                    </div>
                 </td>
                 <td class="p-2 text-center">
                     <button type="button" onclick="removeItemRow('${itemCounter}')" class="text-slate-400 hover:text-red-500 p-1"><i class="fa-solid fa-xmark"></i></button>
@@ -852,8 +883,6 @@
             const previewEl = input.nextElementSibling;
             
             if (!file) {
-                input.dataset.attachmentDataUrl = '';
-                previewEl.classList.add('hidden');
                 return;
             }
 
@@ -870,6 +899,7 @@
                         input.dataset.attachmentDataUrl = e.target.result;
                         input.dataset.attachmentType = 'image';
                         input.dataset.attachmentName = file.name;
+                        previewEl.querySelector('span').innerText = file.name;
                         previewEl.classList.remove('hidden');
                     };
                     reader.readAsDataURL(file);
@@ -889,6 +919,7 @@
                     input.dataset.attachmentDataUrl = canvas.toDataURL('image/jpeg', 0.85);
                     input.dataset.attachmentType = 'pdf';
                     input.dataset.attachmentName = file.name;
+                    previewEl.querySelector('span').innerText = file.name;
                     previewEl.classList.remove('hidden');
                 }
             } catch (err) {
@@ -943,9 +974,11 @@
             return autoNo;
         }
 
+        // Save / Update Requisition Form Handler
         function handleSaveRequisition(e) {
             e.preventDefault();
 
+            const reqId = document.getElementById('req-id').value;
             const vendorId = document.getElementById('req-vendor-select').value;
             const vendor = vendorsData[vendorId];
             if (!vendor) {
@@ -981,10 +1014,26 @@
             });
 
             const totals = calculateFormTotals();
-            const reqNo = generateNextReqNo();
-            const id = db.ref('/requisitions').push().key;
 
-            const newReqObj = {
+            let id = reqId;
+            let reqNo = '';
+            let status = 'Menunggu';
+            let createdAt = firebase.database.ServerValue.TIMESTAMP;
+
+            if (reqId && requisitionsData[reqId]) {
+                // Modifying existing requisition
+                reqNo = requisitionsData[reqId].reqNo;
+                status = requisitionsData[reqId].status || 'Menunggu';
+                if (requisitionsData[reqId].createdAt) {
+                    createdAt = requisitionsData[reqId].createdAt;
+                }
+            } else {
+                // Creating new requisition
+                id = db.ref('/requisitions').push().key;
+                reqNo = generateNextReqNo();
+            }
+
+            const reqObj = {
                 id,
                 reqNo,
                 vendorId,
@@ -1000,21 +1049,75 @@
                 isPph23: totals.isPph23,
                 pph23Amount: totals.pph23Amount,
                 grandTotal: totals.grandTotal,
-                status: 'Menunggu',
-                createdAt: firebase.database.ServerValue.TIMESTAMP
+                status: status,
+                createdAt: createdAt,
+                updatedAt: firebase.database.ServerValue.TIMESTAMP
             };
 
-            db.ref(`/requisitions/${id}`).set(newReqObj)
+            db.ref(`/requisitions/${id}`).set(reqObj)
                 .then(() => {
-                    showToast("Pengajuan berhasil dikirim!");
+                    showToast(reqId ? "Pengajuan berhasil diperbarui!" : "Pengajuan berhasil dikirim!");
                     resetRequisitionForm();
                     switchTab('requisitions');
                 })
                 .catch(err => showToast("Gagal menyimpan pengajuan: " + err.message, "error"));
         }
 
+        // Edit Requisition (Loads existing requisition into form for editing)
+        function editRequisition(id) {
+            const r = requisitionsData[id];
+            if (!r) {
+                showToast("Data pengajuan tidak ditemukan!", "error");
+                return;
+            }
+
+            // Switch to form tab
+            switchTab('new-requisition');
+
+            // Set Form Header & State
+            document.getElementById('req-id').value = r.id;
+            document.getElementById('req-form-title').innerText = `Edit Pengajuan: ${r.reqNo}`;
+            document.getElementById('tab-label-form').innerText = 'Edit Pengajuan';
+            document.getElementById('btn-save-req-text').innerText = 'Simpan Perubahan';
+            document.getElementById('btn-save-req-icon').className = 'fa-solid fa-floppy-disk';
+            document.getElementById('auto-req-no').innerText = r.reqNo;
+
+            // Populate fields
+            document.getElementById('req-vendor-select').value = r.vendorId || '';
+            document.getElementById('req-date').value = r.date || new Date().toISOString().split('T')[0];
+            document.getElementById('req-payment-method').value = r.paymentMethod || 'Transfer Bank';
+            document.getElementById('req-subject').value = r.subject || '';
+            document.getElementById('req-bank-info').value = r.vendorBankInfo || '';
+
+            // Tax checkboxes
+            document.getElementById('tax-ppn-check').checked = !!r.isPpn;
+            document.getElementById('tax-pph23-check').checked = !!r.isPph23;
+
+            // Populate Item Rows
+            const tbody = document.getElementById('items-table-body');
+            tbody.innerHTML = '';
+            itemCounter = 0;
+
+            if (r.items && r.items.length > 0) {
+                r.items.forEach(item => {
+                    addItemRow(item);
+                });
+            } else {
+                addItemRow();
+            }
+
+            calculateFormTotals();
+            showToast(`Mengedit pengajuan ${r.reqNo}`, "success");
+        }
+
+        // Reset Requisition Form to default "New Requisition" mode
         function resetRequisitionForm() {
             document.getElementById('requisition-form').reset();
+            document.getElementById('req-id').value = '';
+            document.getElementById('req-form-title').innerText = 'Form Pengajuan Pembayaran';
+            document.getElementById('tab-label-form').innerText = 'Buat Pengajuan Baru';
+            document.getElementById('btn-save-req-text').innerText = 'Kirim Pengajuan';
+            document.getElementById('btn-save-req-icon').className = 'fa-solid fa-paper-plane';
             document.getElementById('req-date').value = new Date().toISOString().split('T')[0];
             document.getElementById('items-table-body').innerHTML = '';
             itemCounter = 0;
@@ -1052,19 +1155,20 @@
                 const statusBadge = getStatusBadge(r.status);
                 return `
                     <tr class="hover:bg-slate-50 transition border-b border-slate-100">
-                        <td class="p-3.5 font-mono font-bold text-brand-700">${r.reqNo}</td>
-                        <td class="p-3.5 font-medium text-slate-800">${r.vendorName}</td>
-                        <td class="p-3.5 text-slate-600 max-w-xs truncate">${r.subject}</td>
-                        <td class="p-3.5 text-slate-500 text-xs">${r.date}</td>
+                        <td class="p-3.5 font-mono font-bold text-brand-700">${escapeHtml(r.reqNo)}</td>
+                        <td class="p-3.5 font-medium text-slate-800">${escapeHtml(r.vendorName)}</td>
+                        <td class="p-3.5 text-slate-600 max-w-xs truncate">${escapeHtml(r.subject)}</td>
+                        <td class="p-3.5 text-slate-500 text-xs">${escapeHtml(r.date)}</td>
                         <td class="p-3.5 font-bold text-slate-800">${formatRupiah(r.grandTotal)}</td>
                         <td class="p-3.5">${statusBadge}</td>
                         <td class="p-3.5 text-center">
-                            <div class="flex items-center justify-center space-x-1.5">
-                                <button onclick="viewDetail('${r.id}')" title="Detail" class="p-1.5 rounded text-slate-500 hover:text-brand-600 hover:bg-slate-100"><i class="fa-solid fa-eye"></i></button>
+                            <div class="flex items-center justify-center space-x-1">
+                                <button onclick="viewDetail('${r.id}')" title="Detail Pengajuan" class="p-1.5 rounded text-slate-500 hover:text-brand-600 hover:bg-slate-100"><i class="fa-solid fa-eye"></i></button>
+                                <button onclick="editRequisition('${r.id}')" title="Edit Pengajuan" class="p-1.5 rounded text-slate-500 hover:text-brand-600 hover:bg-slate-100"><i class="fa-solid fa-pen-to-square"></i></button>
                                 <button onclick="openStatusModal('${r.id}')" title="Ubah Status" class="p-1.5 rounded text-slate-500 hover:text-amber-600 hover:bg-slate-100"><i class="fa-solid fa-list-check"></i></button>
                                 <button onclick="printVoucherPDF('${r.id}')" title="Cetak Voucher" class="p-1.5 rounded text-slate-500 hover:text-emerald-600 hover:bg-slate-100"><i class="fa-solid fa-print"></i></button>
                                 <button onclick="exportReqProofPDF('${r.id}')" title="Ekspor Bukti PDF" class="p-1.5 rounded text-slate-500 hover:text-red-600 hover:bg-slate-100"><i class="fa-solid fa-file-pdf"></i></button>
-                                <button onclick="deleteRequisition('${r.id}')" title="Hapus" class="p-1.5 rounded text-slate-500 hover:text-red-600 hover:bg-slate-100"><i class="fa-solid fa-trash"></i></button>
+                                <button onclick="deleteRequisition('${r.id}')" title="Hapus Pengajuan" class="p-1.5 rounded text-slate-500 hover:text-red-600 hover:bg-slate-100"><i class="fa-solid fa-trash"></i></button>
                             </div>
                         </td>
                     </tr>
@@ -1083,7 +1187,7 @@
                 case 'Ditolak':
                     return `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700"><i class="fa-solid fa-xmark mr-1"></i>Ditolak</span>`;
                 default:
-                    return `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">${status}</span>`;
+                    return `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">${escapeHtml(status)}</span>`;
             }
         }
 
@@ -1109,9 +1213,9 @@
 
             tbody.innerHTML = recent.map(r => `
                 <tr class="hover:bg-slate-50">
-                    <td class="p-2.5 font-mono font-semibold text-brand-700">${r.reqNo}</td>
-                    <td class="p-2.5">${r.vendorName}</td>
-                    <td class="p-2.5 text-slate-500">${r.date}</td>
+                    <td class="p-2.5 font-mono font-semibold text-brand-700">${escapeHtml(r.reqNo)}</td>
+                    <td class="p-2.5">${escapeHtml(r.vendorName)}</td>
+                    <td class="p-2.5 text-slate-500">${escapeHtml(r.date)}</td>
                     <td class="p-2.5 font-bold">${formatRupiah(r.grandTotal)}</td>
                     <td class="p-2.5">${getStatusBadge(r.status)}</td>
                 </tr>
@@ -1127,12 +1231,12 @@
 
             content.innerHTML = `
                 <div class="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-lg">
-                    <div><strong>Vendor:</strong> ${r.vendorName}</div>
-                    <div><strong>Tanggal:</strong> ${r.date}</div>
-                    <div><strong>Metode Bayar:</strong> ${r.paymentMethod}</div>
-                    <div><strong>Status:</strong> ${r.status}</div>
-                    <div class="col-span-2"><strong>Rekening:</strong> ${r.vendorBankInfo}</div>
-                    <div class="col-span-2"><strong>Perihal:</strong> ${r.subject}</div>
+                    <div><strong>Vendor:</strong> ${escapeHtml(r.vendorName)}</div>
+                    <div><strong>Tanggal:</strong> ${escapeHtml(r.date)}</div>
+                    <div><strong>Metode Bayar:</strong> ${escapeHtml(r.paymentMethod)}</div>
+                    <div><strong>Status:</strong> ${escapeHtml(r.status)}</div>
+                    <div class="col-span-2"><strong>Rekening:</strong> ${escapeHtml(r.vendorBankInfo)}</div>
+                    <div class="col-span-2"><strong>Perihal:</strong> ${escapeHtml(r.subject)}</div>
                 </div>
 
                 <h4 class="font-bold text-xs uppercase tracking-wider text-slate-600 mt-2">Rincian Item</h4>
@@ -1147,9 +1251,9 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y">
-                        ${r.items.map(it => `
+                        ${(r.items || []).map(it => `
                             <tr>
-                                <td class="p-2">${it.description}</td>
+                                <td class="p-2">${escapeHtml(it.description)}</td>
                                 <td class="p-2 text-center">${it.qty}</td>
                                 <td class="p-2 text-right">${formatRupiah(it.price)}</td>
                                 <td class="p-2 text-right font-semibold">${formatRupiah(it.subtotal)}</td>
@@ -1219,7 +1323,7 @@
             if (!r) return;
 
             const printWin = window.open('', '_blank');
-            const attachments = r.items.filter(it => it.attachmentDataUrl).map(it => it.attachmentDataUrl);
+            const attachments = (r.items || []).filter(it => it.attachmentDataUrl);
 
             const printHtml = `
                 <!DOCTYPE html>
@@ -1228,148 +1332,242 @@
                     <title>Voucher Pengajuan Pembayaran - ${r.reqNo}</title>
                     <style>
                         body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 25px; color: #1e293b; font-size: 12px; line-height: 1.4; }
-                        .header { display: flex; justify-content: space-between; border-b: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 20px; }
-                        .company-name { font-size: 18px; font-weight: bold; color: #0f172a; text-transform: uppercase; }
-                        .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0; }
-                        .meta-item { display: flex; }
-                        .meta-label { width: 130px; font-weight: bold; color: #475569; }
-                        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-                        th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; }
-                        th { background-color: #f1f5f9; font-weight: bold; text-transform: uppercase; font-size: 11px; }
-                        .text-right { text-align: right; }
-                        .text-center { text-align: center; }
-                        .summary-box { width: 280px; margin-left: auto; margin-bottom: 30px; }
-                        .summary-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #f1f5f9; }
-                        .grand-total { font-size: 14px; font-weight: bold; border-top: 2px solid #0f172a; border-bottom: 2px solid #0f172a; padding: 6px 0; margin-top: 5px; }
-                        .signatures { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; text-align: center; margin-top: 40px; page-break-inside: avoid; }
-                        .sig-box { border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; height: 100px; display: flex; flex-direction: column; justify-content: space-between; }
-                        .sig-title { font-weight: bold; font-size: 11px; color: #475569; }
-                        .sig-name { font-weight: bold; text-decoration: underline; }
-                        .page-break { page-break-before: always; }
-                        .attachment-title { font-size: 14px; font-weight: bold; text-align: center; margin-bottom: 15px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-                        .attachment-img { max-width: 100%; height: auto; display: block; margin: 0 auto 20px auto; border: 1px solid #ddd; }
+                        .header { display: flex; justify-content: space-between; border-bottom: 2px solid #1e3a8a; padding-bottom: 15px; margin-bottom: 20px; }
+                        .title { font-size: 20px; font-weight: bold; color: #1e3a8a; }
+                        .subtitle { font-size: 11px; color: #64748b; }
+                        .meta-table { width: 100%; margin-bottom: 20px; border-collapse: collapse; }
+                        .meta-table td { padding: 4px 0; vertical-align: top; }
+                        .items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                        .items-table th, .items-table td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; }
+                        .items-table th { background: #f1f5f9; font-weight: bold; }
+                        .total-box { margin-left: auto; width: 280px; text-align: right; margin-bottom: 30px; }
+                        .total-row { display: flex; justify-content: space-between; padding: 4px 0; }
+                        .grand-total { font-size: 14px; font-weight: bold; border-top: 2px solid #1e293b; padding-top: 6px; color: #1e3a8a; }
+                        .sign-table { width: 100%; text-align: center; margin-top: 40px; }
+                        .sign-box { height: 60px; }
+                        .attachment-page { page-break-before: always; text-align: center; margin-top: 20px; }
+                        .attachment-img { max-width: 100%; max-height: 800px; border: 1px solid #ccc; border-radius: 4px; }
                     </style>
                 </head>
                 <body>
                     <div class="header">
                         <div>
-                            <div class="company-name">FORMULIR PENGAJUAN PEMBAYARAN</div>
-                            <div style="font-size: 10px; color: #64748b;">PAYMENT REQUISITION VOUCHER</div>
+                            <div class="title">PAYMENT REQUISITION VOUCHER</div>
+                            <div class="subtitle">PayReq Pro - Sistem Pengajuan Pembayaran</div>
                         </div>
                         <div style="text-align: right;">
-                            <div style="font-weight: bold; font-size: 14px; color: #1e3a8a;">${r.reqNo}</div>
-                            <div style="font-size: 10px; color: #64748b;">Tanggal: ${r.date}</div>
+                            <div style="font-size: 14px; font-weight: bold; color: #1e3a8a;">${escapeHtml(r.reqNo)}</div>
+                            <div style="color: #64748b;">Tanggal: ${escapeHtml(r.date)}</div>
                         </div>
                     </div>
 
-                    <div class="meta-grid">
-                        <div class="meta-item"><span class="meta-label">Nama Vendor:</span> <span>${r.vendorName}</span></div>
-                        <div class="meta-item"><span class="meta-label">Metode Bayar:</span> <span>${r.paymentMethod}</span></div>
-                        <div class="meta-item"><span class="meta-label">Info Rekening:</span> <span>${r.vendorBankInfo}</span></div>
-                        <div class="meta-item"><span class="meta-label">Status Pengajuan:</span> <span><strong>${r.status}</strong></span></div>
-                        <div class="meta-item" style="grid-column: span 2;"><span class="meta-label">Perihal / Keterangan:</span> <span>${r.subject}</span></div>
-                    </div>
+                    <table class="meta-table">
+                        <tr>
+                            <td width="15%"><strong>Vendor</strong></td>
+                            <td width="35%">: ${escapeHtml(r.vendorName)}</td>
+                            <td width="15%"><strong>Metode Bayar</strong></td>
+                            <td width="35%">: ${escapeHtml(r.paymentMethod)}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Rekening</strong></td>
+                            <td>: ${escapeHtml(r.vendorBankInfo)}</td>
+                            <td><strong>Status</strong></td>
+                            <td>: ${escapeHtml(r.status)}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Perihal</strong></td>
+                            <td colspan="3">: ${escapeHtml(r.subject)}</td>
+                        </tr>
+                    </table>
 
-                    <table>
+                    <table class="items-table">
                         <thead>
                             <tr>
-                                <th style="width: 30px;" class="text-center">No</th>
+                                <th width="5%">#</th>
                                 <th>Deskripsi Barang / Jasa</th>
-                                <th style="width: 60px;" class="text-center">Qty</th>
-                                <th style="width: 110px;" class="text-right">Harga Satuan</th>
-                                <th style="width: 120px;" class="text-right">Jumlah</th>
+                                <th width="10%" style="text-align: center;">QTY</th>
+                                <th width="20%" style="text-align: right;">Harga Satuan</th>
+                                <th width="20%" style="text-align: right;">Subtotal</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${r.items.map((it, idx) => `
+                            ${(r.items || []).map((it, idx) => `
                                 <tr>
-                                    <td class="text-center">${idx + 1}</td>
-                                    <td>${it.description}</td>
-                                    <td class="text-center">${it.qty}</td>
-                                    <td class="text-right">${formatRupiah(it.price)}</td>
-                                    <td class="text-right">${formatRupiah(it.subtotal)}</td>
+                                    <td style="text-align: center;">${idx + 1}</td>
+                                    <td>${escapeHtml(it.description)}</td>
+                                    <td style="text-align: center;">${it.qty}</td>
+                                    <td style="text-align: right;">${formatRupiah(it.price)}</td>
+                                    <td style="text-align: right;">${formatRupiah(it.subtotal)}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
                     </table>
 
-                    <div class="summary-box">
-                        <div class="summary-row"><span>Subtotal:</span> <span>${formatRupiah(r.subtotal)}</span></div>
-                        ${r.isPpn ? `<div class="summary-row"><span>PPN (11%):</span> <span>+ ${formatRupiah(r.ppnAmount)}</span></div>` : ''}
-                        ${r.isPph23 ? `<div class="summary-row"><span>PPh 23 (-2%):</span> <span>- ${formatRupiah(r.pph23Amount)}</span></div>` : ''}
-                        <div class="summary-row grand-total"><span>Grand Total:</span> <span>${formatRupiah(r.grandTotal)}</span></div>
+                    <div class="total-box">
+                        <div class="total-row"><span>Subtotal:</span> <strong>${formatRupiah(r.subtotal)}</strong></div>
+                        ${r.isPpn ? `<div class="total-row"><span>PPN 11%:</span> <strong>+ ${formatRupiah(r.ppnAmount)}</strong></div>` : ''}
+                        ${r.isPph23 ? `<div class="total-row"><span>PPh 23 (-2%):</span> <strong>- ${formatRupiah(r.pph23Amount)}</strong></div>` : ''}
+                        <div class="total-row grand-total"><span>Grand Total:</span> <span>${formatRupiah(r.grandTotal)}</span></div>
                     </div>
 
-                    <div class="signatures">
-                        <div class="sig-box">
-                            <div class="sig-title">Diajukan Oleh</div>
-                            <div class="sig-name">( Pemohon )</div>
-                        </div>
-                        <div class="sig-box">
-                            <div class="sig-title">Diperiksa Oleh</div>
-                            <div class="sig-name">( Finance / Verifikator )</div>
-                        </div>
-                        <div class="sig-box">
-                            <div class="sig-title">Disetujui Oleh</div>
-                            <div class="sig-name">( Manager / Direksi )</div>
-                        </div>
-                        <div class="sig-box">
-                            <div class="sig-title">Dibayarkan Oleh</div>
-                            <div class="sig-name">( Kasir / Treasury )</div>
-                        </div>
-                    </div>
+                    <table class="sign-table">
+                        <tr>
+                            <td width="33%">Diajukan Oleh,<div class="sign-box"></div>( Pemohon )</td>
+                            <td width="33%">Diperiksa Oleh,<div class="sign-box"></div>( Finance / Admin )</td>
+                            <td width="33%">Disetujui Oleh,<div class="sign-box"></div>( Pimpinan )</td>
+                        </tr>
+                    </table>
 
-                    ${attachments.map((imgUrl, i) => `
-                        <div class="page-break"></div>
-                        <div class="attachment-title">Lampiran Bukti Tagihan / Invoice #${i + 1} (${r.reqNo})</div>
-                        <img class="attachment-img" src="${imgUrl}" />
+                    ${attachments.map((it, idx) => `
+                        <div class="attachment-page">
+                            <h3>Lampiran Bukti ${idx + 1} -${escapeHtml(it.description)}</h3>
+                            <img src="${it.attachmentDataUrl}" class="attachment-img" />
+                        </div>
                     `).join('')}
 
                     <script>
-                        window.onload = function() {
-                            window.print();
-                        }
+                        window.onload = function() { window.print(); }
                     <\/script>
                 </body>
                 </html>
             `;
 
-            printWin.document.open();
             printWin.document.write(printHtml);
             printWin.document.close();
         }
 
-        // ================= FITUR BARU: PENGGABUNG BUKTI PEMBAYARAN (JS LOGIC) =================
-        
+        async function exportReqProofPDF(id) {
+            const r = requisitionsData[id];
+            if (!r) return;
+
+            showToast("Mempersiapkan PDF Bukti Bayar...", "success");
+
+            try {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(16);
+                doc.setTextColor(30, 58, 138);
+                doc.text("BUKTI PENGAJUAN PEMBAYARAN", 14, 20);
+
+                doc.setFontSize(10);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(100);
+                doc.text(`No. Pengajuan: ${r.reqNo}`, 14, 27);
+                doc.text(`Tanggal: ${r.date}`, 14, 32);
+
+                doc.setLineWidth(0.5);
+                doc.setDrawColor(200);
+                doc.line(14, 36, 196, 36);
+
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(30);
+                doc.text("Vendor:", 14, 43);
+                doc.setFont("helvetica", "normal");
+                doc.text(r.vendorName || '-', 40, 43);
+
+                doc.setFont("helvetica", "bold");
+                doc.text("Rekening:", 14, 49);
+                doc.setFont("helvetica", "normal");
+                doc.text(r.vendorBankInfo || '-', 40, 49);
+
+                doc.setFont("helvetica", "bold");
+                doc.text("Perihal:", 14, 55);
+                doc.setFont("helvetica", "normal");
+                doc.text(r.subject || '-', 40, 55);
+
+                doc.setFont("helvetica", "bold");
+                doc.text("Grand Total:", 14, 61);
+                doc.setTextColor(30, 58, 138);
+                doc.text(formatRupiah(r.grandTotal), 40, 61);
+
+                let currentY = 70;
+                const attachments = (r.items || []).filter(it => it.attachmentDataUrl);
+
+                if (attachments.length === 0) {
+                    doc.setFont("helvetica", "italic");
+                    doc.setFontSize(10);
+                    doc.setTextColor(150);
+                    doc.text("Tidak ada lampiran gambar/PDF pada pengajuan ini.", 14, currentY);
+                } else {
+                    for (let i = 0; i < attachments.length; i++) {
+                        if (i > 0 || currentY > 150) {
+                            doc.addPage();
+                            currentY = 20;
+                        }
+                        const it = attachments[i];
+                        doc.setFont("helvetica", "bold");
+                        doc.setFontSize(11);
+                        doc.setTextColor(30);
+                        doc.text(`Lampiran ${i + 1}: ${it.description || 'Gambar Bukti'}`, 14, currentY);
+                        currentY += 6;
+
+                        try {
+                            doc.addImage(it.attachmentDataUrl, 'JPEG', 14, currentY, 180, 120);
+                            currentY += 126;
+                        } catch (e) {
+                            doc.setFont("helvetica", "normal");
+                            doc.setFontSize(9);
+                            doc.text("[Format gambar tidak didukung untuk embedding PDF langsung]", 14, currentY + 5);
+                            currentY += 15;
+                        }
+                    }
+                }
+
+                doc.save(`Bukti_Bayar_${r.reqNo.replace(/\//g, '_')}.pdf`);
+                showToast("PDF berhasil didownload!");
+            } catch (err) {
+                console.error(err);
+                showToast("Gagal membuat PDF: " + err.message, "error");
+            }
+        }
+
+        // ================= MERGE PAYMENT PROOFS FEATURE =================
+        function populateImportReqDropdown() {
+            const select = document.getElementById('import-req-select');
+            if (!select) return;
+
+            const currentVal = select.value;
+            select.innerHTML = `<option value="">-- Pilih Pengajuan yang memiliki Lampiran --</option>`;
+
+            Object.values(requisitionsData).forEach(r => {
+                const hasAttachments = (r.items || []).some(it => it.attachmentDataUrl);
+                if (hasAttachments) {
+                    const opt = document.createElement('option');
+                    opt.value = r.id;
+                    opt.textContent = `${r.reqNo} - ${r.vendorName} (${r.subject})`;
+                    select.appendChild(opt);
+                }
+            });
+
+            select.value = currentVal;
+        }
+
         async function handleMergeFilesUpload(input) {
             const files = Array.from(input.files);
             if (files.length === 0) return;
 
-            showToast(`Memproses ${files.length} berkas...`, "success");
-
             for (const file of files) {
-                if (file.type.startsWith('image/')) {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        mergedFilesList.push({
-                            id: 'mfile_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-                            name: file.name,
-                            size: (file.size / 1024).toFixed(1) + ' KB',
-                            type: 'image',
-                            dataUrl: e.target.result,
-                            pagesDataUrls: [e.target.result]
-                        });
-                        renderMergeFilesList();
-                    };
-                    reader.readAsDataURL(file);
-                } else if (file.type === 'application/pdf') {
-                    try {
-                        const arrayBuffer = await file.arrayBuffer();
-                        const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-                        const pagesDataUrls = [];
+                if (file.size > 5 * 1024 * 1024) {
+                    showToast(`File ${file.name} melebihi 5MB`, "error");
+                    continue;
+                }
 
-                        for (let p = 1; p <= pdfDoc.numPages; p++) {
-                            const page = await pdfDoc.getPage(p);
+                try {
+                    if (file.type.startsWith('image/')) {
+                        const dataUrl = await readFileAsDataURL(file);
+                        mergedFilesList.push({
+                            name: file.name,
+                            type: 'image',
+                            dataUrl: dataUrl
+                        });
+                    } else if (file.type === 'application/pdf') {
+                        const arrayBuffer = await file.arrayBuffer();
+                        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+                        for (let i = 1; i <= pdf.numPages; i++) {
+                            const page = await pdf.getPage(i);
                             const viewport = page.getViewport({ scale: 1.5 });
                             const canvas = document.createElement('canvas');
                             const context = canvas.getContext('2d');
@@ -1377,41 +1575,31 @@
                             canvas.width = viewport.width;
 
                             await page.render({ canvasContext: context, viewport: viewport }).promise;
-                            pagesDataUrls.push(canvas.toDataURL('image/jpeg', 0.85));
-                        }
+                            const pageDataUrl = canvas.toDataURL('image/jpeg', 0.85);
 
-                        mergedFilesList.push({
-                            id: 'mfile_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-                            name: file.name,
-                            size: (file.size / 1024).toFixed(1) + ' KB',
-                            type: 'pdf',
-                            dataUrl: pagesDataUrls[0],
-                            pagesDataUrls: pagesDataUrls,
-                            pageCount: pdfDoc.numPages
-                        });
-                        renderMergeFilesList();
-                    } catch (err) {
-                        console.error("Gagal membaca file PDF:", err);
-                        showToast(`Gagal membaca ${file.name}`, "error");
+                            mergedFilesList.push({
+                                name: `${file.name} (Halaman ${i}/${pdf.numPages})`,
+                                type: 'pdf',
+                                dataUrl: pageDataUrl
+                            });
+                        }
                     }
+                } catch (err) {
+                    console.error(err);
+                    showToast(`Gagal membaca file ${file.name}`, "error");
                 }
             }
+
             input.value = '';
+            renderMergeFilesList();
         }
 
-        function populateImportReqDropdown() {
-            const select = document.getElementById('import-req-select');
-            if (!select) return;
-
-            select.innerHTML = `<option value="">-- Pilih Pengajuan yang memiliki Lampiran --</option>`;
-            Object.values(requisitionsData).forEach(r => {
-                const hasAttachment = r.items && r.items.some(it => it.attachmentDataUrl);
-                if (hasAttachment) {
-                    const opt = document.createElement('option');
-                    opt.value = r.id;
-                    opt.textContent = `${r.reqNo} - ${r.vendorName} (${r.subject})`;
-                    select.appendChild(opt);
-                }
+        function readFileAsDataURL(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.onerror = err => reject(err);
+                reader.readAsDataURL(file);
             });
         }
 
@@ -1423,35 +1611,35 @@
             }
 
             const r = requisitionsData[reqId];
-            if (!r || !r.items) return;
+            if (!r) return;
 
-            let addedCount = 0;
-            r.items.forEach((it, idx) => {
+            let count = 0;
+            (r.items || []).forEach(it => {
                 if (it.attachmentDataUrl) {
                     mergedFilesList.push({
-                        id: 'mfile_req_' + Date.now() + '_' + idx,
-                        name: `${r.reqNo} - ${it.description || 'Lampiran ' + (idx + 1)}`,
-                        size: 'Database',
+                        name: `REQ ${r.reqNo} - ${it.description || 'Lampiran'}`,
                         type: it.attachmentType || 'image',
-                        dataUrl: it.attachmentDataUrl,
-                        pagesDataUrls: [it.attachmentDataUrl]
+                        dataUrl: it.attachmentDataUrl
                     });
-                    addedCount++;
+                    count++;
                 }
             });
 
-            if (addedCount > 0) {
-                showToast(`Berhasil mengimpor ${addedCount} berkas dari ${r.reqNo}`);
+            if (count > 0) {
+                showToast(`Berhasil mengimpor ${count} lampiran dari ${r.reqNo}`);
                 renderMergeFilesList();
             } else {
-                showToast("Pengajuan tidak memiliki lampiran berkas", "error");
+                showToast("Pengajuan tidak memiliki lampiran", "error");
             }
         }
 
         function renderMergeFilesList() {
             const container = document.getElementById('merge-files-container');
-            const countSpan = document.getElementById('merge-file-count');
-            countSpan.innerText = mergedFilesList.length;
+            const countEl = document.getElementById('merge-file-count');
+            const statusInfo = document.getElementById('merge-status-info');
+
+            countEl.innerText = mergedFilesList.length;
+            statusInfo.innerText = `${mergedFilesList.length} file siap digabung`;
 
             if (mergedFilesList.length === 0) {
                 container.innerHTML = `
@@ -1464,22 +1652,20 @@
             }
 
             container.innerHTML = mergedFilesList.map((item, index) => `
-                <div class="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-brand-300 transition">
+                <div class="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                     <div class="flex items-center space-x-3 overflow-hidden">
-                        <span class="font-bold text-xs text-slate-400 w-5 text-center">${index + 1}</span>
-                        <div class="w-10 h-10 rounded border border-slate-200 bg-slate-100 flex-shrink-0 overflow-hidden flex items-center justify-center">
-                            ${item.dataUrl ? `<img src="${item.dataUrl}" class="w-full h-full object-cover">` : `<i class="fa-solid fa-file text-slate-400"></i>`}
+                        <div class="w-10 h-10 rounded bg-slate-100 border border-slate-200 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                            <img src="${item.dataUrl}" class="w-full h-full object-cover" />
                         </div>
                         <div class="truncate">
-                            <h5 class="font-semibold text-xs text-slate-800 truncate">${item.name}</h5>
-                            <p class="text-[10px] text-slate-400">${item.type.toUpperCase()} &bull; ${item.size} ${item.pageCount ? `(${item.pageCount} Hal)` : ''}</p>
+                            <div class="text-xs font-semibold text-slate-800 truncate">${escapeHtml(item.name)}</div>
+                            <div class="text-[10px] text-slate-400 uppercase">${item.type}</div>
                         </div>
                     </div>
-
                     <div class="flex items-center space-x-1 flex-shrink-0">
-                        <button type="button" onclick="moveMergeFile(${index}, -1)" ${index === 0 ? 'disabled' : ''} class="p-1.5 text-slate-400 hover:text-brand-600 disabled:opacity-30"><i class="fa-solid fa-arrow-up text-xs"></i></button>
-                        <button type="button" onclick="moveMergeFile(${index}, 1)" ${index === mergedFilesList.length - 1 ? 'disabled' : ''} class="p-1.5 text-slate-400 hover:text-brand-600 disabled:opacity-30"><i class="fa-solid fa-arrow-down text-xs"></i></button>
-                        <button type="button" onclick="removeMergeFile(${index})" class="p-1.5 text-slate-400 hover:text-red-600"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                        <button onclick="moveMergeFile(${index}, -1)" ${index === 0 ? 'disabled class="opacity-30 cursor-not-allowed p-1.5 text-slate-400"' : 'class="p-1.5 text-slate-600 hover:text-brand-600 hover:bg-slate-100 rounded"'} title="Naikkan"><i class="fa-solid fa-arrow-up text-xs"></i></button>
+                        <button onclick="moveMergeFile(${index}, 1)" ${index === mergedFilesList.length - 1 ? 'disabled class="opacity-30 cursor-not-allowed p-1.5 text-slate-400"' : 'class="p-1.5 text-slate-600 hover:text-brand-600 hover:bg-slate-100 rounded"'} title="Turunkan"><i class="fa-solid fa-arrow-down text-xs"></i></button>
+                        <button onclick="removeMergeFile(${index})" class="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded" title="Hapus"><i class="fa-solid fa-trash text-xs"></i></button>
                     </div>
                 </div>
             `).join('');
@@ -1500,140 +1686,76 @@
         }
 
         function clearMergeFiles() {
-            if (mergedFilesList.length === 0) return;
-            if (confirm("Bersihkan seluruh berkas terpilih?")) {
-                mergedFilesList = [];
-                renderMergeFilesList();
-                showToast("Daftar berkas dibersihkan");
-            }
+            mergedFilesList = [];
+            renderMergeFilesList();
+            showToast("Daftar berkas dibersihkan");
         }
 
         async function generateMergedPDF() {
             if (mergedFilesList.length === 0) {
-                showToast("Belum ada bukti pembayaran yang dipilih/diunggah!", "error");
+                showToast("Tambahkan minimal 1 berkas terlebih dahulu!", "error");
                 return;
             }
 
-            const docTitle = document.getElementById('merge-doc-title').value || 'Gabungan Bukti Pembayaran';
-            const docNotes = document.getElementById('merge-doc-notes').value || '';
+            const title = document.getElementById('merge-doc-title').value || 'Gabungan Bukti Pembayaran';
+            const notes = document.getElementById('merge-doc-notes').value || '';
 
-            showToast("Memproses penggabungan PDF...", "success");
+            try {
+                showToast("Memproses penggabungan PDF...", "success");
 
-            const { jsPDF } = window.jspdf;
-            const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-            const pageWidth = pdf.internal.pageSize.getWidth();
-            const pageHeight = pdf.internal.pageSize.getHeight();
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
 
-            // Cover Header
-            pdf.setFillColor(30, 58, 138);
-            pdf.rect(0, 0, pageWidth, 24, 'F');
-            
-            pdf.setTextColor(255, 255, 255);
-            pdf.setFontSize(14);
-            pdf.setFont('helvetica', 'bold');
-            pdf.text(docTitle.toUpperCase(), 14, 15);
+                // Title Cover Page / Header
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(16);
+                doc.setTextColor(30, 58, 138);
+                doc.text(title, 14, 20);
 
-            pdf.setTextColor(51, 65, 85);
-            pdf.setFontSize(10);
-            pdf.setFont('helvetica', 'normal');
+                doc.setFontSize(10);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(100);
+                doc.text(`Dicetak pada: ${new Date().toLocaleDateString('id-ID')}`, 14, 27);
 
-            let currentY = 32;
-            pdf.text(`Tanggal Dibuat: ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`, 14, currentY);
-            currentY += 6;
-            pdf.text(`Total Bukti Pembayaran: ${mergedFilesList.length} Berkas`, 14, currentY);
-            currentY += 6;
+                if (notes) {
+                    doc.setFont("helvetica", "italic");
+                    doc.text(`Catatan: ${notes}`, 14, 33);
+                }
 
-            if (docNotes) {
-                pdf.text(`Catatan: ${docNotes}`, 14, currentY);
-                currentY += 8;
-            }
+                doc.setLineWidth(0.5);
+                doc.setDrawColor(200);
+                doc.line(14, 37, 196, 37);
 
-            pdf.setDrawColor(226, 232, 240);
-            pdf.line(14, currentY, pageWidth - 14, currentY);
-            currentY += 8;
+                let currentY = 45;
 
-            let pageNum = 1;
-
-            for (let i = 0; i < mergedFilesList.length; i++) {
-                const item = mergedFilesList[i];
-
-                const pagesToProcess = item.pagesDataUrls || [item.dataUrl];
-
-                for (let p = 0; p < pagesToProcess.length; p++) {
-                    if (i > 0 || p > 0 || currentY > pageHeight - 60) {
-                        pdf.addPage();
-                        currentY = 18;
-                        pageNum++;
+                for (let i = 0; i < mergedFilesList.length; i++) {
+                    if (i > 0) {
+                        doc.addPage();
+                        currentY = 20;
                     }
 
-                    pdf.setFontSize(10);
-                    pdf.setFont('helvetica', 'bold');
-                    pdf.setTextColor(15, 23, 42);
-                    pdf.text(`Bukti Pembayaran #${i + 1}: ${item.name} ${pagesToProcess.length > 1 ? `(Hal ${p + 1}/${pagesToProcess.length})` : ''}`, 14, currentY);
+                    const item = mergedFilesList[i];
+                    doc.setFont("helvetica", "bold");
+                    doc.setFontSize(10);
+                    doc.setTextColor(30);
+                    doc.text(`Berkas ${i + 1}: ${item.name}`, 14, currentY);
                     currentY += 6;
 
                     try {
-                        const imgUrl = pagesToProcess[p];
-                        const imgProps = pdf.getImageProperties(imgUrl);
-                        const maxW = pageWidth - 28;
-                        const maxH = pageHeight - currentY - 15;
-
-                        let imgW = maxW;
-                        let imgH = (imgProps.height * maxW) / imgProps.width;
-
-                        if (imgH > maxH) {
-                            imgH = maxH;
-                            imgW = (imgProps.width * maxH) / imgProps.height;
-                        }
-
-                        pdf.addImage(imgUrl, 'JPEG', (pageWidth - imgW) / 2, currentY, imgW, imgH);
+                        doc.addImage(item.dataUrl, 'JPEG', 14, currentY, 180, 230);
                     } catch (e) {
-                        console.error("Error adding image to PDF:", e);
+                        doc.setFont("helvetica", "normal");
+                        doc.setFontSize(9);
+                        doc.text("[Gagal memasukkan berkas ini]", 14, currentY + 5);
                     }
-
-                    // Footer
-                    pdf.setFontSize(8);
-                    pdf.setTextColor(148, 163, 184);
-                    pdf.text(`PayReq Pro - Dokumen Bukti Pembayaran Merged | Halaman ${pageNum}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
                 }
+
+                doc.save(`${title.replace(/\s+/g, '_')}.pdf`);
+                showToast("PDF Gabungan berhasil dibuat!");
+            } catch (err) {
+                console.error(err);
+                showToast("Gagal membuat PDF gabungan: " + err.message, "error");
             }
-
-            const filename = `Bukti_Pembayaran_Gabungan_${new Date().toISOString().slice(0,10)}.pdf`;
-            pdf.save(filename);
-            showToast("PDF bukti pembayaran berhasil dibuat & diunduh!");
-        }
-
-        // Export Bukti PDF langsung dari Pengajuan
-        function exportReqProofPDF(id) {
-            const r = requisitionsData[id];
-            if (!r) return;
-
-            const attachments = r.items ? r.items.filter(it => it.attachmentDataUrl) : [];
-            if (attachments.length === 0) {
-                showToast("Pengajuan ini tidak memiliki lampiran bukti pembayaran!", "error");
-                return;
-            }
-
-            // Switch to merge tab and clear, then add requisition files
-            switchTab('merge-proofs');
-            mergedFilesList = [];
-
-            attachments.forEach((it, idx) => {
-                mergedFilesList.push({
-                    id: 'mfile_req_direct_' + Date.now() + '_' + idx,
-                    name: `${r.reqNo} - ${it.description || 'Lampiran ' + (idx + 1)}`,
-                    size: 'Database',
-                    type: it.attachmentType || 'image',
-                    dataUrl: it.attachmentDataUrl,
-                    pagesDataUrls: [it.attachmentDataUrl]
-                });
-            });
-
-            document.getElementById('merge-doc-title').value = `Bukti Pembayaran ${r.reqNo} (${r.vendorName})`;
-            document.getElementById('merge-doc-notes').value = `Perihal: ${r.subject}\nTotal Tagihan: ${formatRupiah(r.grandTotal)}`;
-
-            renderMergeFilesList();
-            showToast(`Memuat ${attachments.length} berkas bukti dari ${r.reqNo}`);
         }
     </script>
 </body>
