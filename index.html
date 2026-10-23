@@ -60,6 +60,8 @@
         @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
         .bg-white.rounded-xl { transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease; }
         .bg-white.rounded-xl.shadow-sm:hover { box-shadow: 0 8px 24px -10px rgba(160,104,53,.35); border-color: #f3d4a4; }
+        .skeleton { border-radius: 6px; background: linear-gradient(90deg,#f6e7cf 25%,#fdf3e1 50%,#f6e7cf 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+        @keyframes shimmer { to { background-position: -200% 0; } }
         .tab-btn { white-space: nowrap; transition: color .15s, background .15s; }
         input:focus, select:focus, textarea:focus { border-color: var(--dobah-orange) !important; box-shadow: 0 0 0 3px rgba(250,175,79,.35) !important; outline: none; }
         button:focus-visible, a:focus-visible { outline: 2px solid var(--dobah-orange); outline-offset: 2px; }
@@ -137,6 +139,10 @@
                 </div>
             </div>
             <!-- Summary Metric Cards -->
+                        <div id="migrate-banner" class="hidden flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+                <div><i class="fa-solid fa-bolt mr-1.5"></i><strong>Percepat loading:</strong> <span id="migrate-count">0</span> pengajuan masih menyimpan lampiran di dalam data utama. Pindahkan sekali agar halaman terbuka jauh lebih cepat (backup otomatis diunduh, data tidak dihapus).</div>
+                <button id="migrate-btn" onclick="migrateAttachments()" class="shrink-0 px-4 py-2 rounded-lg bg-brand-600 text-white font-semibold hover:bg-brand-700 disabled:opacity-60">Optimalkan Sekarang</button>
+            </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
                     <div class="p-3 bg-brand-50 text-brand-600 rounded-lg">
@@ -241,12 +247,12 @@
             <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
                 <div class="relative w-full md:w-96">
                     <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-                    <input type="text" id="search-req" oninput="renderRequisitions()" placeholder="Cari No. REQ, Vendor, Perihal..." class="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                    <input type="text" id="search-req" oninput="reqPage=1;debouncedRenderReq()" placeholder="Cari No. REQ, Vendor, Perihal..." class="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
                 </div>
 
                 <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
                     <label class="text-xs font-medium text-slate-500">Status:</label>
-                    <select id="filter-status" onchange="renderRequisitions()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                    <select id="filter-status" onchange="reqPage=1;renderRequisitions()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none">
                         <option value="ALL">Semua Status</option>
                         <option value="Menunggu">Menunggu</option>
                         <option value="Disetujui">Disetujui</option>
@@ -272,10 +278,11 @@
                             </tr>
                         </thead>
                         <tbody id="requisition-table-body" class="divide-y divide-slate-200">
-                            <tr><td colspan="7" class="p-6 text-center text-slate-400">Sedang memuat data pengajuan...</td></tr>
+                            <tr><td colspan="7" class="p-4"><div class="skeleton h-4 w-full mb-3"></div><div class="skeleton h-4 w-5/6 mb-3"></div><div class="skeleton h-4 w-4/6"></div><span class="sr-only">Sedang memuat data pengajuan...</span></td></tr>
                         </tbody>
                     </table>
                 </div>
+                <div id="req-pagination" class="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-slate-100"></div>
             </div>
         </section>
 
@@ -670,7 +677,128 @@
             listenFirebaseData();
         };
 
+        // ================= PERFORMA: LAMPIRAN DISIMPAN TERPISAH =================
+        // Lampiran (base64) disimpan di /attachments/{id}; /requisitions hanya berisi data teks yang ringan.
+        let isLive = false;
+        let reqPage = 1;
+        const PAGE_SIZE = 20;
+        const attCache = {};
+        const hasAtt = it => !!(it && (it.attachmentDataUrl || it.hasAttachment));
+        const debounce = (fn, ms = 250) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
+        async function hydrateRequisition(id) {
+            const r = requisitionsData[id];
+            if (!r) return null;
+            if (!isLive) { showToast("Data masih sinkronisasi, coba lagi sesaat.", "error"); return null; }
+            const items = r.items || [];
+            const needs = items.some(it => !it.attachmentDataUrl && it.hasAttachment);
+            let att = {};
+            if (needs) {
+                if (!attCache[id]) attCache[id] = (await db.ref('/attachments/' + id).once('value')).val() || {};
+                att = attCache[id];
+            }
+            return { ...r, items: items.map((it, i) => (it.attachmentDataUrl || !it.hasAttachment) ? it : { ...it, attachmentDataUrl: att[i] || '' }) };
+        }
+
+        async function previewAttachmentRef(id, idx) {
+            const win = window.open('');
+            if (!win) { showToast("Pop-up diblokir browser.", "error"); return; }
+            win.document.write('<p style="font-family:sans-serif">Memuat lampiran...</p>');
+            const r = await hydrateRequisition(id);
+            const url = r && r.items[idx] && r.items[idx].attachmentDataUrl;
+            win.document.open();
+            win.document.write(url ? `<img src="${url}" style="max-width:100%;height:auto;" />` : '<p style="font-family:sans-serif">Lampiran tidak ditemukan.</p>');
+            win.document.close();
+        }
+
+        function legacyIds() {
+            return Object.keys(requisitionsData).filter(id => (requisitionsData[id].items || []).some(it => it.attachmentDataUrl));
+        }
+        function updateMigrationBanner() {
+            const el = document.getElementById('migrate-banner');
+            if (!el) return;
+            const n = legacyIds().length;
+            el.classList.toggle('hidden', n === 0);
+            const c = document.getElementById('migrate-count');
+            if (c) c.textContent = n;
+        }
+        function downloadBackup() {
+            const blob = new Blob([JSON.stringify({ vendors: vendorsData, requisitions: requisitionsData })], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `dobah-backup-${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+        }
+        // Migrasi sekali jalan: salin lampiran lama ke /attachments, verifikasi, baru dihapus dari /requisitions.
+        async function migrateAttachments() {
+            const ids = legacyIds();
+            if (!ids.length) return;
+            if (!confirm(`Optimalkan ${ids.length} pengajuan agar halaman terbuka lebih cepat?\n\nSebuah file cadangan (backup .json) akan diunduh terlebih dahulu. Lampiran tidak dihapus: hanya dipindahkan dan diverifikasi.`)) return;
+            downloadBackup();
+            const btn = document.getElementById('migrate-btn');
+            btn.disabled = true;
+            let done = 0;
+            for (const id of ids) {
+                try {
+                    const r = requisitionsData[id];
+                    const att = {};
+                    const items = r.items.map((it, i) => {
+                        if (!it.attachmentDataUrl) return it;
+                        att[i] = it.attachmentDataUrl;
+                        const { attachmentDataUrl, ...rest } = it;
+                        return { ...rest, hasAttachment: true };
+                    });
+                    await db.ref('/attachments/' + id).set(att);
+                    const chk = (await db.ref('/attachments/' + id).once('value')).val() || {};
+                    if (Object.keys(att).some(k => chk[k] !== att[k])) throw new Error('Verifikasi gagal untuk ' + r.reqNo);
+                    await db.ref(`/requisitions/${id}/items`).set(items);
+                    done++;
+                    btn.innerText = `Memindahkan ${done}/${ids.length}...`;
+                } catch (err) {
+                    showToast("Migrasi dihentikan: " + err.message + " (data asli aman)", "error");
+                    btn.disabled = false; btn.innerText = 'Coba Lagi';
+                    return;
+                }
+            }
+            btn.disabled = false;
+            showToast(`Selesai! ${done} pengajuan dioptimalkan.`);
+        }
+
+        // Cache lokal agar tampilan langsung muncul saat dibuka
+        function loadReqCache() {
+            try {
+                const c = JSON.parse(localStorage.getItem('dobah_req_cache') || 'null');
+                if (c && Object.keys(c).length) { requisitionsData = c; renderDashboard(); renderRequisitions(); }
+            } catch (e) {}
+        }
+        function saveReqCache() {
+            try {
+                const lite = {};
+                Object.entries(requisitionsData).forEach(([k, r]) => {
+                    lite[k] = { ...r, items: (r.items || []).map(it => { const { attachmentDataUrl, ...rest } = it; return attachmentDataUrl ? { ...rest, hasAttachment: true } : rest; }) };
+                });
+                localStorage.setItem('dobah_req_cache', JSON.stringify(lite));
+            } catch (e) {}
+        }
+        const debouncedRenderReq = debounce(() => renderRequisitions());
+
+        function renderReqPagination(total, pages) {
+            const el = document.getElementById('req-pagination');
+            if (!el) return;
+            if (total <= PAGE_SIZE) { el.innerHTML = total ? `<span class="text-xs text-slate-500">${total} pengajuan</span>` : ''; return; }
+            const from = (reqPage - 1) * PAGE_SIZE + 1, to = Math.min(total, reqPage * PAGE_SIZE);
+            el.innerHTML = `
+                <span class="text-xs text-slate-500">Menampilkan ${from}–${to} dari ${total}</span>
+                <div class="flex items-center gap-2">
+                    <button ${reqPage <= 1 ? 'disabled' : ''} onclick="reqPage--;renderRequisitions()" class="px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white hover:bg-brand-50 disabled:opacity-40 disabled:cursor-not-allowed">&larr; Sebelumnya</button>
+                    <span class="text-xs font-semibold text-slate-600">${reqPage} / ${pages}</span>
+                    <button ${reqPage >= pages ? 'disabled' : ''} onclick="reqPage++;renderRequisitions()" class="px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white hover:bg-brand-50 disabled:opacity-40 disabled:cursor-not-allowed">Berikutnya &rarr;</button>
+                </div>`;
+        }
+
         function listenFirebaseData() {
+            loadReqCache();
             // Listen to Vendors node
             db.ref('/vendors').on('value', (snapshot) => {
                 vendorsData = snapshot.val() || {};
@@ -683,6 +811,9 @@
             // Listen to Requisitions node
             db.ref('/requisitions').on('value', (snapshot) => {
                 requisitionsData = snapshot.val() || {};
+                isLive = true;
+                saveReqCache();
+                updateMigrationBanner();
                 renderDashboard();
                 renderRequisitions();
                 if (!document.getElementById('req-id').value) {
@@ -1032,6 +1163,7 @@
             }
 
             const items = [];
+            const attMap = {};
             itemRows.forEach(r => {
                 const desc = r.querySelector('.item-desc').value;
                 const qty = parseFloat(r.querySelector('.item-qty').value) || 0;
@@ -1046,10 +1178,11 @@
                     qty,
                     price,
                     subtotal: qty * price,
-                    attachmentDataUrl,
+                    hasAttachment: !!attachmentDataUrl,
                     attachmentType,
                     attachmentName
                 });
+                if (attachmentDataUrl) attMap[items.length - 1] = attachmentDataUrl;
             });
 
             const totals = calculateFormTotals();
@@ -1093,7 +1226,8 @@
                 updatedAt: firebase.database.ServerValue.TIMESTAMP
             };
 
-            db.ref(`/requisitions/${id}`).set(reqObj)
+            delete attCache[id];
+            db.ref().update({ [`requisitions/${id}`]: reqObj, [`attachments/${id}`]: Object.keys(attMap).length ? attMap : null })
                 .then(() => {
                     showToast(reqId ? "Pengajuan berhasil diperbarui!" : "Pengajuan berhasil dikirim!");
                     resetRequisitionForm();
@@ -1103,8 +1237,8 @@
         }
 
         // Edit Requisition (Loads existing requisition into form for editing)
-        function editRequisition(id) {
-            const r = requisitionsData[id];
+        async function editRequisition(id) {
+            const r = await hydrateRequisition(id);
             if (!r) {
                 showToast("Data pengajuan tidak ditemukan!", "error");
                 return;
@@ -1170,6 +1304,7 @@
             const search = document.getElementById('search-req').value.toLowerCase();
             const filterStatus = document.getElementById('filter-status').value;
 
+            document.getElementById('req-pagination').innerHTML = '';
             let keys = Object.keys(requisitionsData);
 
             if (keys.length === 0) {
@@ -1190,7 +1325,10 @@
                 return;
             }
 
-            tbody.innerHTML = filtered.map(r => {
+            const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+            if (reqPage > pages) reqPage = pages;
+            renderReqPagination(filtered.length, pages);
+            tbody.innerHTML = filtered.slice((reqPage - 1) * PAGE_SIZE, reqPage * PAGE_SIZE).map(r => {
                 const statusBadge = getStatusBadge(r.status);
                 return `
                     <tr class="hover:bg-slate-50 transition border-b border-slate-100">
@@ -1290,14 +1428,14 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y">
-                        ${(r.items || []).map(it => `
+                        ${(r.items || []).map((it, idx) => `
                             <tr>
                                 <td class="p-2">${escapeHtml(it.description)}</td>
                                 <td class="p-2 text-center">${it.qty}</td>
                                 <td class="p-2 text-right">${formatRupiah(it.price)}</td>
                                 <td class="p-2 text-right font-semibold">${formatRupiah(it.subtotal)}</td>
                                 <td class="p-2 text-center">
-                                    ${it.attachmentDataUrl ? `<button onclick="previewAttachment('${it.attachmentDataUrl}')" class="text-brand-600 font-medium underline text-[11px]">Lihat File</button>` : '-'}
+                                    ${hasAtt(it) ? `<button onclick="previewAttachmentRef('${r.id}', ${idx})" class="text-brand-600 font-medium underline text-[11px]">Lihat File</button>` : '-'}
                                 </td>
                             </tr>
                         `).join('')}
@@ -1351,17 +1489,19 @@
 
         function deleteRequisition(id) {
             if (confirm("Apakah Anda yakin ingin menghapus pengajuan ini?")) {
-                db.ref(`/requisitions/${id}`).remove()
+                delete attCache[id];
+                db.ref().update({ [`requisitions/${id}`]: null, [`attachments/${id}`]: null })
                     .then(() => showToast("Pengajuan dihapus"))
                     .catch(err => showToast(err.message, "error"));
             }
         }
 
-        function printVoucherPDF(id) {
-            const r = requisitionsData[id];
-            if (!r) return;
-
+        async function printVoucherPDF(id) {
+            if (!requisitionsData[id]) return;
             const printWin = window.open('', '_blank');
+            if (printWin) printWin.document.write('<p style="font-family:sans-serif">Menyiapkan voucher...</p>');
+            const r = await hydrateRequisition(id);
+            if (!r) { if (printWin) printWin.close(); return; }
             const attachments = (r.items || []).filter(it => it.attachmentDataUrl);
 
             const printHtml = `
@@ -1499,10 +1639,9 @@
         }
 
         async function exportReqProofPDF(id) {
-            const r = requisitionsData[id];
-            if (!r) return;
-
             showToast("Mempersiapkan PDF Bukti Bayar...", "success");
+            const r = await hydrateRequisition(id);
+            if (!r) return;
 
             try {
                 const { jsPDF } = window.jspdf;
@@ -1595,7 +1734,7 @@
             select.innerHTML = `<option value="">-- Pilih Pengajuan yang memiliki Lampiran --</option>`;
 
             Object.values(requisitionsData).forEach(r => {
-                const hasAttachments = (r.items || []).some(it => it.attachmentDataUrl);
+                const hasAttachments = (r.items || []).some(hasAtt);
                 if (hasAttachments) {
                     const opt = document.createElement('option');
                     opt.value = r.id;
@@ -1666,14 +1805,14 @@
             });
         }
 
-        function importReqFilesToMergeList() {
+        async function importReqFilesToMergeList() {
             const reqId = document.getElementById('import-req-select').value;
             if (!reqId) {
                 showToast("Pilih pengajuan terlebih dahulu!", "error");
                 return;
             }
 
-            const r = requisitionsData[reqId];
+            const r = await hydrateRequisition(reqId);
             if (!r) return;
 
             let count = 0;
